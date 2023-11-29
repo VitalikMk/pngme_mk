@@ -1,7 +1,10 @@
 use std::fmt::{Display, Formatter};
+use crc::{Crc, CRC_32_ISO_HDLC};
 use crate::chunk_type::ChunkType;
 use crate::Error;
 use crate::Result;
+
+const CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
 
 pub struct Chunk {
     length: u32,
@@ -21,42 +24,68 @@ impl TryFrom<u8> for Chunk {
         let length = u32::from_be_bytes(first4);
 
         let chunk_type_bytes: [u8; 4] = iter.by_ref()
-            .take(4).collect()::<Vec<u8>>().as_slice().try_into()?;
-        let chunk_type = ChunkType::try_from(chunk_type_bytes);
+            .take(4).collect::<Vec<u8>>().as_slice().try_into()?;
+        let chunk_type = ChunkType::try_from(chunk_type_bytes)?;
         let data: Vec<u8> = iter.by_ref()
             .take(length as usize).collect();
 
         let crc_bytes: [u8; 4] = iter.by_ref()
             .take(4).collect::<Vec<u8>>().as_slice().try_into()?;
 
+        let crc = u32::from_be_bytes(crc_bytes);
+
+        Ok(
+            Chunk {
+                length,
+                chunk_type,
+                data,
+                crc
+            }
+        )
+
     }
 }
 
 impl Display for Chunk {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        write!(f, "{}", self.data_as_string().unwrap())
     }
 }
 
 impl Chunk {
 
+    fn get_bytes_for_crc(chunk_type: &ChunkType, data: &Vec<u8>) -> Vec<u8> {
+        let mut container = vec![];
+        container.extend(chunk_type.bytes());
+        container.extend(data);
+        container
+    }
+
     fn new(chunk_type: ChunkType, data: Vec<u8>) -> Chunk {
-        Chunk {}
+        Chunk {
+            length: data.len() as u32,
+            crc: CRC.checksum(Self::get_bytes_for_crc(&chunk_type, &data).as_slice()),
+            chunk_type,
+            data,
+
+        }
     }
     fn length(&self) -> u32 {
-        5
+        self.length
     }
     fn chunk_type(&self) -> &ChunkType {
-
+        &self.chunk_type
     }
     fn data(&self) -> &[u8] {
-
+        self.data.as_slice()
     }
     fn crc(&self) -> u32 {
-        4
+        self.crc
     }
     fn data_as_string(&self) -> Result<String> {
-
+        Ok(
+            String::from_utf8(self.data.clone())?
+        )
     }
     fn as_bytes(&self) -> Vec<u8> {
         vec![]
